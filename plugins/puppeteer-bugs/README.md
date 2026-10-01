@@ -1,4 +1,4 @@
-# ClickUp Tasks 0.12.0
+# ClickUp Tasks 0.12.1
 
 A Codex plugin for your own ClickUp project and GitHub repository. Browse tasks and comments, save filters, and send selected tasks directly into isolated worktree chats.
 
@@ -8,7 +8,7 @@ Use `Install-Windows.ps1` on Windows or `sh install.sh` on macOS/Linux from the 
 
 Prerequisites: a Codex desktop host that exposes the app-tools bridge with its `codex` command available, Node.js 20 or later, Git, a local clone already added as a Codex project, and GitHub authentication through that clone's Git credential helper or GitHub CLI. No npm installation is required to use the bundled plugin.
 
-After installation, restart Codex. Open **ClickUp Tasks → gear menu → Setup**. One temporary local page contains:
+After installation, restart Codex. Open the **ClickUp Tasks** panel and choose **Setup** in its top-right corner. The header and the read-only Plugin version field in Setup show the loaded version. One temporary local page contains:
 
 - ClickUp project link: workspace, Space overview, Folder overview or List. Task links and custom view links are rejected with an explanation. The link sets the initial board filter; you can browse other accessible lists in that workspace.
 - ClickUp personal API token: saved using Windows DPAPI on Windows, or a separate plaintext file with owner-only permissions (0600) inside a private directory (0700) on macOS/Linux, never sent to chat. Leave blank when updating setup to retain the saved token. Remove saved API token disconnects it. An explicit CLICKUP_API_TOKEN environment override takes precedence.

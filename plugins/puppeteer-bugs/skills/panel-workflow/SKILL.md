@@ -5,7 +5,7 @@ description: Open the ClickUp Tasks panel, configure a user's project, refresh t
 
 # ClickUp Tasks panel
 
-Discover the actual host-prefixed tools. open_bug_board opens the panel; get_bug_board_state reads local state; refresh_bug_board reads ClickUp directly. Setup is under the gear menu and open_clickup_settings. API tokens are entered only in the temporary local page and stored locally (DPAPI on Windows; owner-only token file on macOS/Linux). Never request or expose tokens in chat.
+Discover the actual host-prefixed tools. open_bug_board opens the panel; get_bug_board_state reads local state; refresh_bug_board reads ClickUp directly. Setup is in the panel's top-right header, the board utilities menu, and open_clickup_settings. The header shows the loaded version. API tokens are entered only in the temporary local page and stored locally (DPAPI on Windows; owner-only token file on macOS/Linux). Never request or expose tokens in chat.
 
 The user configures a ClickUp workspace, Space, Folder or List link, GitHub repository URL, absolute local checkout and existing target branch. The checkout must already be added as a local Git project in Codex. There are no fixed workspace IDs, repository owners, Codex project IDs, user paths or target branches. The user's local Git/GitHub login is used for repository operations.
 

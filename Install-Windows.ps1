@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([switch]$ConnectionOnly)
+param([switch]$ConnectionOnly, [switch]$UseCheckout)
 $ErrorActionPreference = 'Stop'
 
 if (-not $env:LOCALAPPDATA) { throw 'This installer requires Windows.' }
@@ -9,9 +9,10 @@ $nodeMajor = [int]((& $nodeCommand --version).TrimStart('v').Split('.')[0])
 if ($nodeMajor -lt 20) { throw 'Node.js 20 or later is required.' }
 Get-Command git -ErrorAction Stop | Out-Null
 $sourceRoot = [IO.Path]::GetFullPath($PSScriptRoot)
-$installRoot = [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'ClickUpTasksPlugin'))
+$installRoot = if ($UseCheckout) { $sourceRoot } else { [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'ClickUpTasksPlugin')) }
 $sourcePlugin = Join-Path $sourceRoot 'plugins/puppeteer-bugs'
 if (-not (Test-Path -LiteralPath (Join-Path $sourcePlugin 'server/index.mjs'))) { throw 'Extract the entire ZIP before running this installer.' }
+$expectedVersion = (Get-Content -LiteralPath (Join-Path $sourcePlugin '.codex-plugin/plugin.json') -Raw | ConvertFrom-Json).version
 
 # The install directory contains package files only; user data is stored separately.
 if ($sourceRoot -ne $installRoot) {
@@ -28,10 +29,25 @@ if (Test-Path -LiteralPath $configPath) {
     Write-Host "Configuration backup: $backupPath"
 }
 if (-not $ConnectionOnly) {
+    $marketplaceList = & $codexCommand plugin marketplace list --json
+    if ($LASTEXITCODE -ne 0) { throw 'Could not inspect the registered marketplaces.' }
+    $existingMarketplace = ($marketplaceList | ConvertFrom-Json).marketplaces | Where-Object { $_.name -eq 'clickup-tasks-local' }
+    if ($existingMarketplace -and [IO.Path]::GetFullPath($existingMarketplace.root) -ne $installRoot) {
+        & $codexCommand plugin marketplace remove 'clickup-tasks-local' --json
+        if ($LASTEXITCODE -ne 0) { throw 'Could not replace the previous ClickUp marketplace source.' }
+    }
     & $codexCommand plugin marketplace add $installRoot --json
     if ($LASTEXITCODE -ne 0) { throw 'Could not register the local marketplace.' }
     & $codexCommand plugin add 'puppeteer-bugs@clickup-tasks-local' --json
     if ($LASTEXITCODE -ne 0) { throw 'Could not install the local plugin. The registered marketplace is available in Codex Plugins.' }
+    $pluginList = & $codexCommand plugin list --json
+    if ($LASTEXITCODE -ne 0) { throw 'Could not verify the installed plugin.' }
+    $installed = @(($pluginList | ConvertFrom-Json).installed | Where-Object { $_.pluginId -eq 'puppeteer-bugs@clickup-tasks-local' })
+    $expectedPluginPath = [IO.Path]::GetFullPath((Join-Path $installRoot 'plugins/puppeteer-bugs'))
+    if ($installed.Count -ne 1 -or $installed[0].version -ne $expectedVersion -or [IO.Path]::GetFullPath($installed[0].source.path) -ne $expectedPluginPath) {
+        throw 'Installed plugin version or source does not match this checkout. The config backup is preserved.'
+    }
+    Write-Host "Verified ClickUp Tasks $expectedVersion from $expectedPluginPath"
 }
 $serverPath = Join-Path $installRoot 'plugins/puppeteer-bugs/server/index.mjs'
 & $codexCommand mcp add puppeteer-bugs-panel -- $nodeCommand $serverPath
@@ -49,6 +65,9 @@ $configText = [regex]::Replace($configText, $headerPattern, '[mcp_servers.puppet
 & $codexCommand mcp get puppeteer-bugs-panel --json
 if ($LASTEXITCODE -ne 0) { throw 'Native MCP configuration validation failed. Restore the preserved config backup.' }
 Write-Host ''
-Write-Host 'Installed. Restart Codex, open ClickUp Tasks, then choose gear menu > Setup.'
+Write-Host "Installed runtime: $serverPath"
+Write-Host 'Restart Codex, open ClickUp Tasks, then choose Setup in the top-right corner.'
+if ($ConnectionOnly) { Write-Host 'ConnectionOnly updates the native server only; it does not update the installed plugin version.' }
+if ($UseCheckout) { Write-Host 'This checkout must remain at its current path. Rerun this command after pulling or rebuilding.' }
 Write-Host 'The installer does not change chat approval or sandbox settings.'
 Write-Host 'Your ClickUp token and project settings stay on this computer.'

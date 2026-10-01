@@ -1,10 +1,10 @@
-import {configureScope} from './config.mjs';
+import {configureScope,VERSION} from './config.mjs';
 import {DEFAULT_FILTER,normalizeFilter} from './filters.mjs';
 import {MODELS,DEFAULT_MODEL,DEFAULT_THINKING,thinkingModes} from './models.mjs';
 import {safePr} from './pr.mjs';
 import {App,applyDocumentTheme,applyHostStyleVariables} from '@modelcontextprotocol/ext-apps';
 import {OpenAIExtensions} from '@openai/mcp-extensions/app';
-const app=new App({name:'Puppeteer Tasks',version:'0.12.0'}),extensions=new OpenAIExtensions(app),$=id=>document.getElementById(id);
+const app=new App({name:'Puppeteer Tasks',version:VERSION}),extensions=new OpenAIExtensions(app),$=id=>document.getElementById(id);
 let state={tickets:[],runs:{}},selected=null,view='todo',connected=false,busy=false,feedback='',localError='',menuId=null,setupUrl='';
 const drafts=new Map(),checked=new Set(),commentLoading=new Set(),commentErrors=new Map();
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -20,6 +20,7 @@ const call=(name,args={})=>app.callServerTool({name,arguments:args});
 async function open(url){const r=await app.openLink({url});if(r?.isError)throw Error('Could not open link.');}
 async function send(text){const args={role:'user',content:[{type:'text',text}],_meta:{'openai/message':{target:'active',send:true}}};const r=extensions.message?await extensions.message.send(args):await app.sendMessage(args);if(r?.isError)throw Error('Could not open the coding chat.');}
 function render(){
+ $('version').textContent=`v${VERSION}`;$('setup').disabled=!connected||busy;
  renderSources();
  $('count').textContent=state.fetched_at?`· ${state.tickets.filter(t=>!t.finished).length} open`:'';
  $('todo').classList.toggle('primary',view==='todo');$('finished').classList.toggle('primary',view==='finished');$('todo').setAttribute('aria-pressed',String(view==='todo'));$('finished').setAttribute('aria-pressed',String(view==='finished'));
@@ -74,16 +75,17 @@ function openMenu(id,rect){$('utility').classList.remove('filter-menu');menuId=i
  positionMenu(rect);$('closeMenu').focus();
 }
 function boardSettings(){$('utility').classList.remove('filter-menu');menuId='board';$('utility').innerHTML=`<button class="button quiet close" id="closeMenu" aria-label="Close options">×</button><h3>Board utilities</h3><p class="hint">${state.connection?.verified?'Connected to ClickUp':'ClickUp connection needs attention'}<br>${state.fetched_at?'Updated '+esc(new Date(state.fetched_at).toLocaleString('en-GB')):'Not loaded'}</p><button class="button menu-action" id="refresh" ${!connected||busy?'disabled':''}>↻ Refresh tickets</button><button class="button menu-action" id="connect" ${!connected||busy?'disabled':''}>Setup</button><button class="button menu-action" id="directory" ${!connected||busy?'disabled':''}>Refresh spaces and lists</button><div id="setupResult">${setupUrl?setupLink():''}</div><details class="hint"><summary>Project information</summary>${esc(state.scope?.repositorySlug||'Setup required')} · ${esc(state.scope?.baseBranch||'')}<br>${esc(state.scope?.clickupUrl||'Choose a ClickUp project in Setup')}</details>`;
- $('closeMenu').onclick=closeMenu;$('refresh').onclick=()=>perform(async()=>accept(await call('refresh_bug_board')));$('connect').onclick=connect;$('directory').onclick=()=>perform(async()=>accept(await call('get_clickup_catalog')));positionMenu($('settings').getBoundingClientRect());
+ $('closeMenu').onclick=closeMenu;$('refresh').onclick=()=>perform(async()=>accept(await call('refresh_bug_board')));$('connect').onclick=connect;$('directory').onclick=()=>perform(async()=>accept(await call('get_clickup_catalog')));positionMenu($('setup').getBoundingClientRect());
 }
 function setupLink(){return `<p class="hint">Setup is ready. Open it to edit the ClickUp link, API token, GitHub repository, local folder and target branch. If a background tab was opened, this link lets you navigate to it.</p><a class="button primary" href="${esc(setupUrl)}" target="_blank" rel="noopener noreferrer">Open setup page ↗</a><p><a class="setup-url" href="${esc(setupUrl)}" target="_blank" rel="noopener noreferrer">${esc(setupUrl)}</a></p>`;}
-async function connect(){if(busy)return;busy=true;$('connect').disabled=true;try{const data=unpack(await call('open_clickup_settings'));if(!/^http:\/\/127\.0\.0\.1:\d+\/setup\/[a-f0-9]+$/.test(data.url))throw Error('Invalid setup URL.');setupUrl=data.url;boardSettings();await open(setupUrl).catch(()=>{});}catch(e){localError=e.message;render();}finally{busy=false;if(menuId==='board')boardSettings();}}
+async function connect(){if(busy||!connected)return;busy=true;render();if($('connect'))$('connect').disabled=true;try{const data=unpack(await call('open_clickup_settings'));if(!/^http:\/\/127\.0\.0\.1:\d+\/setup\/[a-f0-9]+$/.test(data.url))throw Error('Invalid setup URL.');setupUrl=data.url;boardSettings();await open(setupUrl).catch(()=>{});}catch(e){localError=e.message;}finally{busy=false;render();if(menuId==='board')boardSettings();}}
 function error(e){localError=e.message||String(e);render();}
 async function perform(fn){if(busy)return;busy=true;localError='';feedback='';closeMenu();render();try{await fn();}catch(e){localError=e.message||String(e);}finally{busy=false;render();}}
 async function start(ids){await perform(async()=>{const data=unpack(await call('start_bug_implementations',{ticket_ids:ids,options:ids.map(ticket_id=>({ticket_id,...draft(ticket_id)}))}));accept({structuredContent:data.state});const errors=(data.creations||[]).filter(c=>c.error);if(errors.length)throw Error(errors.map(c=>`${c.ticket_id}: ${c.error}`).join('\n'));const created=(data.creations||[]).filter(c=>c.thread_id||c.client_thread_id);feedback=created.length?`Requested ${created.length} coding session(s).`:'Selected tasks already have sessions.';});}
 function switchView(v){view=v;checked.clear();closeMenu();$('status').value='';selected=visible()[0]?.id;render();}
-document.addEventListener('pointerdown',e=>{if(!e.target.closest('#utility,[data-menu],#detailOptions,#settings,#filters'))closeMenu();});document.addEventListener('keydown',e=>{if(e.key==='Escape')closeMenu();});
+document.addEventListener('pointerdown',e=>{if(!e.target.closest('#utility,[data-menu],#detailOptions,#setup,#filters'))closeMenu();});document.addEventListener('keydown',e=>{if(e.key==='Escape')closeMenu();});
 function theme(ctx){if(ctx?.theme){applyDocumentTheme(ctx.theme);document.documentElement.dataset.theme=ctx.theme;}if(ctx?.styles?.variables)applyHostStyleVariables(ctx.styles.variables);}
-app.ontoolresult=r=>{try{accept(r);}catch(e){error(e);}};app.onhostcontextchanged=theme;$('todo').onclick=()=>switchView('todo');$('finished').onclick=()=>switchView('finished');$('search').oninput=renderList;$('status').onchange=renderList;$('settings').onclick=boardSettings;$('startSelected').onclick=()=>start([...checked]);$('source').onchange=()=>selectSource($('source').value);$('preset').onchange=()=>applyPreset($('preset').value);$('filters').onclick=openFilters;
+app.ontoolresult=r=>{try{accept(r);}catch(e){error(e);}};app.onhostcontextchanged=theme;$('todo').onclick=()=>switchView('todo');$('finished').onclick=()=>switchView('finished');$('search').oninput=renderList;$('status').onchange=renderList;$('startSelected').onclick=()=>start([...checked]);$('source').onchange=()=>selectSource($('source').value);$('preset').onchange=()=>applyPreset($('preset').value);$('filters').onclick=openFilters;
+$('setup').onclick=connect;
 try{await app.connect();connected=true;theme(app.getHostContext());render();}catch(e){error(e);}
 setInterval(async()=>{if(connected&&!document.hidden&&!busy)try{accept(await call('get_bug_board_state'));}catch(e){error(e);}},3000);

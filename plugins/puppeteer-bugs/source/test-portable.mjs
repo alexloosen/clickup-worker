@@ -3,7 +3,7 @@ import {mkdtemp,readFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {parseClickUpLink,validateSetup,saveSetup} from './setup.mjs';
-import {configureScope,SCOPE} from './config.mjs';
+import {configureScope,SCOPE,VERSION} from './config.mjs';
 import {Store} from './store.mjs';
 import {Credentials} from './credentials.mjs';
 import {Repository} from './github.mjs';
@@ -37,7 +37,7 @@ const repo=new Repository({path,run:async(exe,args)=>args[0]==='remote'?'https:/
 await assert.rejects(()=>repo.cleanup('task-a',{branch:'release',sha:'a'.repeat(40)},'release'),/target branch is protected/);
 
 const credentialDirectory=await mkdtemp(join(tmpdir(),'clickup-token-test-')),realCredentials=new Credentials(credentialDirectory);await realCredentials.save(input.token);assert.equal(await realCredentials.get(),input.token);assert.ok(!(await readFile(join(credentialDirectory,'clickup-token.dpapi'),'utf8')).includes(input.token));
-let received;const page=await realCredentials.settings({setup:{...state.setup,repositoryUrl:'https://github.com/example/"<script>alert(1)</script>'},onSave:async args=>{received=args;}}),url=new URL(page.url),html=await(await fetch(url)).text();assert.ok(html.includes('id="clickupUrl"'));assert.ok(html.includes('id="repositoryUrl"'));assert.ok(html.includes('type="password"'));assert.ok(!html.includes(input.token));assert.ok(!html.includes('<script>alert(1)</script>'));
+let received;const page=await realCredentials.settings({setup:{...state.setup,repositoryUrl:'https://github.com/example/"<script>alert(1)</script>'},onSave:async args=>{received=args;}}),url=new URL(page.url),html=await(await fetch(url)).text();assert.ok(html.includes(`id="pluginVersion" value="${VERSION}" readonly`));assert.ok(html.includes('id="clickupUrl"'));assert.ok(html.includes('id="repositoryUrl"'));assert.ok(html.includes('type="password"'));assert.ok(!html.includes(input.token));assert.ok(!html.includes('<script>alert(1)</script>'));
 const key=url.pathname.split('/').pop();assert.equal((await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,403);
 assert.equal((await fetch(url,{method:'POST',headers:{'Content-Type':'application/json',Origin:url.origin,'X-Setup-Key':key},body:JSON.stringify({...input,action:'connect'})})).status,200);assert.equal(received.repositoryPath,path);
 

@@ -14,11 +14,15 @@ Clone or download this repository, then run the installer from its root:
 | macOS Terminal | `sh install.sh` |
 | Linux terminal | `sh install.sh` |
 
-No npm install is required for normal use. The bundled server and UI are included. Install as your normal user, without sudo. Restart Codex after installing, open **ClickUp Tasks**, then choose **gear menu → Setup**.
+No npm install is required for normal use. The bundled server and UI are included. Install as your normal user, without sudo. Restart Codex after installing, open **ClickUp Tasks**, then choose **Setup** in the top-right corner of the task panel. This is inside the panel, separate from Codex's plugin details page. The header shows the loaded version.
 
 Setup asks for your ClickUp workspace/Space/Folder/List URL, API token, GitHub repository URL, local checkout folder and target branch. Add that checkout as a local Git project in Codex first. Use your own Git credential helper or GitHub CLI login for GitHub access.
 
-If you already have the account-installed plugin, use `.\Install-Windows.ps1 -ConnectionOnly` or `sh install.sh --connection-only` to update the native connection without installing a second copy. Rerun the installer after pulling an update; it copies the bundled runtime to a stable per-user location. It backs up Codex configuration and does not change approval or sandbox settings.
+If you already have the account-installed plugin, use `.\Install-Windows.ps1 -ConnectionOnly` or `sh install.sh --connection-only` to update the native connection without installing a second copy. This mode does not update the installed plugin package or its displayed version; the account-installed release must be updated separately.
+
+To use this Git checkout as the plugin source, run `.\Install-Windows.ps1 -UseCheckout` or `sh install.sh --use-checkout`. This registers the marketplace and native server directly from this repository and verifies the installed package version and source path. Keep the checkout at this location, and rerun the same command after pulling or rebuilding. If an older account-installed copy is also enabled, disable that copy in Codex Plugins to avoid duplicate skills and panels.
+
+Without the checkout option, the installer copies the bundled runtime to a stable per-user location. Rerun it after pulling an update. Both modes back up Codex configuration and leave approval and sandbox settings unchanged.
 
 ## Credentials and local data
 
