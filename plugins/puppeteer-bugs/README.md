@@ -1,6 +1,6 @@
-# ClickUp Tasks 0.12.1
+# ClickUp Tasks 0.12.3
 
-A Codex plugin for your own ClickUp project and GitHub repository. Browse tasks and comments, save filters, and send selected tasks directly into isolated worktree chats.
+A Codex plugin for your own ClickUp project and GitHub repository. Browse tasks and comments, save filters, and send selected tasks into worktree chats or the existing checkout.
 
 ## Private installation
 
@@ -20,11 +20,15 @@ Setup checks the repository and ClickUp access before saving. Failed checks keep
 
 ## Tasks and completion
 
-Implement task creates exactly one new coding chat per selected task, with a worktree from the configured branch and the full description, paginated comments, additional context, delivery mode, model and thinking level. Codex controls chat approvals; the plugin does not override them. Duplicate and uncertain launch attempts stay locked until inspected. The session bridge depends on the installed Codex host and may need an update if that host changes; get_direct_launch_status is a read-only diagnostic.
+Implement task creates exactly one new coding chat per selected task, with the selected checkout mode and the full description, paginated comments, additional context, delivery mode, model and thinking level. Codex controls chat approvals; the plugin does not override them. Duplicate and uncertain launch attempts stay locked until inspected. The session bridge depends on the installed Codex host and may need an update if that host changes; get_direct_launch_status is a read-only diagnostic.
+
+In Ticket options > Work mode & delivery, choose **Existing checkout - implement and commit** for small fixes. This uses the current branch, preserves unrelated work and commits locally without pushing or creating a PR. Only one plugin local task can run at a time; avoid editing the same checkout in another chat while it runs. Mark finished verifies that the local commit is still contained in the checkout and retains its branch and files.
 
 PR delivery is the default. Direct delivery is an explicit per-task option and uses a normal fast-forward push to the configured target. The internal compatibility value `direct_develop` does not hardcode the target branch. PR comments use this plugin's configured ClickUp connection, with duplicate and uncertain-write protection; no separate ClickUp connector is required.
 
-In Progress and Review Requested are synchronized from verified coding progress. Use list workflow mappings if your lists use different status names. Mark finished confirms user testing and acceptance, verifies the merged PR or authorized published commit, adds an acceptance comment and cleans up only the exact recorded branch at its verified commit. Dirty or advanced branches are preserved. Worktree files are retained. PRs are never merged automatically.
+In Progress and Review Requested are synchronized from verified coding progress. Use list workflow mappings if your lists use different status names. Mark finished confirms user testing and acceptance, verifies the merged PR or authorized published commit, adds an acceptance comment and cleans up only the exact recorded branch at its verified commit. Dirty or advanced branches are preserved. Clean linked worktrees are removed after acceptance, including generated files. The primary checkout is retained. PRs are never merged automatically.
+
+**Clean old worktrees** rechecks recorded accepted deliveries and removes matching clean linked worktrees, including detached copies left by older versions. Confirm the associated coding chats have stopped. Dirty, locked, changed, primary and unverified worktrees are preserved; no folders are deleted merely because they are old. Generated files inside removed worktrees are also deleted.
 
 Filters, saved presets, task comments and timezone follow each user's setup. Changes in project setup preserve older work records locally; stale launch IDs cannot update new assignments. The plugin never changes assignees automatically.
 

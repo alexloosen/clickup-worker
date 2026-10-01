@@ -1,6 +1,6 @@
 # ClickUp Worker
 
-A Codex plugin that connects your ClickUp tasks to your GitHub repository and starts a new worktree chat with the complete implementation prompt for each selected task. No dispatcher chat is created. The panel is named **ClickUp Tasks**; the stable plugin ID remains `puppeteer-bugs`.
+A Codex plugin that connects your ClickUp tasks to your GitHub repository and starts a coding chat in a worktree or the existing checkout with the complete implementation prompt for each selected task. No dispatcher chat is created. The panel is named **ClickUp Tasks**; the stable plugin ID remains `puppeteer-bugs`.
 
 ## Install
 

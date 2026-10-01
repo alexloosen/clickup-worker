@@ -7,7 +7,7 @@ export function verifyProject(data){
  SCOPE.projectId=project.projectId;SCOPE.projectName=project.label;return project;
 }
 export function creationArguments(packet){
- if(packet.target?.type!=='project'||packet.target.projectId!==SCOPE.projectId||packet.target.environment?.type!=='worktree'||packet.target.environment.startingState?.type!=='branch'||packet.target.environment.startingState.branchName!==SCOPE.baseBranch||!packet.prompt)throw Error('Invalid project/worktree launch packet.');
+ if(packet.target?.type!=='project'||packet.target.projectId!==SCOPE.projectId||(packet.delivery_mode==='local_commit'?(packet.target.environment?.type!=='local'||packet.target.environment.startingState!==undefined):(packet.target.environment?.type!=='worktree'||packet.target.environment.startingState?.type!=='branch'||packet.target.environment.startingState.branchName!==SCOPE.baseBranch))||!packet.prompt)throw Error('Invalid project/worktree launch packet.');
  return {target:packet.target,prompt:packet.prompt,title:packet.title,...packet.model?{model:packet.model}:{},...packet.thinking?{thinking:packet.thinking}:{}};
 }
 export function createdIdentity(result){
@@ -19,11 +19,11 @@ export async function launchDirect(store,packets,host,caller,{signal,sync=async(
  // Atomic per-launch claim protects retries even when the host outcome is uncertain.
  return Promise.all(packets.map(async packet=>{
   const args=creationArguments(packet);
-  const claimed=await store.mutate(s=>{const run=s.runs[packet.ticket_id];if(!run||run.launch_id!==packet.launch_id||run.status!=='dispatching'||run.thread_id||run.client_thread_id||run.launch_attempted_at)return false;run.launch_attempted_at=new Date().toISOString();run.summary='Creating the coding chat directly in a worktree from the configured target branch.';run.updated_at=new Date().toISOString();return true;});
+  const claimed=await store.mutate(s=>{const run=s.runs[packet.ticket_id];if(!run||run.launch_id!==packet.launch_id||run.status!=='dispatching'||run.thread_id||run.client_thread_id||run.launch_attempted_at)return false;run.launch_attempted_at=new Date().toISOString();run.summary=packet.delivery_mode==='local_commit'?'Creating the coding chat in the existing checkout.':'Creating the coding chat directly in a worktree from the configured target branch.';run.updated_at=new Date().toISOString();return true;});
   if(!claimed.value)return {ticket_id:packet.ticket_id,launch_id:packet.launch_id,skipped:true};
   try{
    const identity=createdIdentity(await host.call('create_thread',args,caller,signal));
-   await recordWork(store,{ticket_id:packet.ticket_id,launch_id:packet.launch_id,status:'queued',...identity,summary:identity.thread_id?'Coding chat created in a worktree from the configured target branch.':'Coding chat requested; worktree setup is pending.'});
+   await recordWork(store,{ticket_id:packet.ticket_id,launch_id:packet.launch_id,status:'queued',...identity,summary:packet.delivery_mode==='local_commit'?'Coding chat requested in the existing checkout.':identity.thread_id?'Coding chat created in a worktree from the configured target branch.':'Coding chat requested; worktree setup is pending.'});
    try{await sync(packet.ticket_id,packet.launch_id);}catch{}
    return {ticket_id:packet.ticket_id,launch_id:packet.launch_id,...identity};
   }catch(e){

@@ -1,4 +1,6 @@
 import {spawn} from 'node:child_process';
+import {resolve} from 'node:path';
+import {normalizePath} from './platform.mjs';
 import {SCOPE} from './config.mjs';
 import {safePr,repositorySlug} from './pr.mjs';
 const shaPattern=/^[a-f0-9]{40}$/;
@@ -31,12 +33,43 @@ export class Repository {
   try{await this.git(['merge-base','--is-ancestor',commit,'FETCH_HEAD']);}catch{throw Error('The delivered commit is not contained in the configured remote target branch.');}
   return {url:'https://github.com/'+SCOPE.repositorySlug+'/commit/'+commit,branch,sha:commit,direct:true};
  }
+ async localDelivery(commit,branch){
+  if(!shaPattern.test(commit||''))throw Error('A verified local commit is required.');
+  await this.verify();
+  try{await this.git(['merge-base','--is-ancestor',commit,'HEAD']);}catch{throw Error('The local commit is no longer contained in this checkout.');}
+  return {url:`local commit ${commit}`,branch,sha:commit,local:true};
+ }
+ async cleanupWorktrees(ticketId,pr,recordedBranch){
+  if(pr.branch!==recordedBranch||!pr.branch?.startsWith(`fix/cu-${ticketId}-`)||!shaPattern.test(pr.sha))throw Error('Worktree identity does not match this ticket.');
+  await this.verify();
+  const trees=(await this.git(['worktree','list','--porcelain'])).split(/\r?\n\r?\n/);
+  let removed=0;
+  for(const [index,block] of trees.entries()){
+   const lines=block.split(/\r?\n/),path=lines.find(l=>l.startsWith('worktree '))?.slice(9);
+   // Git lists the primary checkout first. Also protect the configured checkout.
+   if(!index||!path||normalizePath(resolve(path))===normalizePath(resolve(this.path)))continue;
+   if(!lines.includes(`HEAD ${pr.sha}`)||!(lines.includes(`branch refs/heads/${pr.branch}`)||lines.includes('detached')))continue;
+   if(lines.includes('detached')){
+    // A matching commit alone could belong to an unrelated, newly created chat.
+    const lastMove=await this.git(['reflog','show','-1','--format=%gs','HEAD'],{cwd:path});
+    if(lastMove!==`checkout: moving from ${pr.branch} to ${pr.sha}`)continue;
+   }
+   if(lines.some(l=>l.startsWith('locked')||l.startsWith('prunable')))throw Error('Matching worktree is locked/unavailable; preserved.');
+   if(await this.git(['status','--porcelain','--untracked-files=all'],{cwd:path}))throw Error('Worktree has uncommitted files; preserved.');
+   if(await this.git(['rev-parse','HEAD'],{cwd:path})!==pr.sha)throw Error('Worktree changed during cleanup; preserved.');
+   // Never force removal: Git rechecks dirtiness, locks and submodules.
+   await this.git(['worktree','remove','--',resolve(path)]);
+   removed++;
+  }
+  return `${removed} clean worktree(s) removed.`;
+ }
  async cleanup(ticketId,pr,recordedBranch){
   if(pr.branch===SCOPE.baseBranch)throw Error('The configured target branch is protected from cleanup.');
   if(!pr.branch.startsWith(`fix/cu-${ticketId}-`)||pr.branch!==recordedBranch||!shaPattern.test(pr.sha))throw Error('Branch identity does not match this ticket. Branches were preserved.');
   await this.verify();await this.git(['check-ref-format',`refs/heads/${pr.branch}`]);
   const pushUrl=await this.git(['remote','get-url','--push','origin']);if(!allowedRemote(pushUrl))throw Error('Unexpected push remote. Branches were preserved.');
   const ref=`refs/heads/${pr.branch}`,notes=[];
+  notes.push(await this.cleanupWorktrees(ticketId,pr,recordedBranch));
   // Compare-and-delete prevents deleting a branch updated after merge verification.
   const remote=await this.git(['ls-remote','--heads',pushUrl,ref]);
   if(remote){if(remote.split(/\s+/)[0]!==pr.sha)throw Error('Remote branch has changes beyond the merged PR. Branches were preserved.');await this.git(['push',`--force-with-lease=${ref}:${pr.sha}`,pushUrl,`:${ref}`]);}
@@ -54,6 +87,6 @@ export class Repository {
    await this.git(['update-ref','-d',ref,pr.sha]);
   }
   const tracking='refs/remotes/origin/'+pr.branch;const tracked=await this.git(['for-each-ref','--format=%(objectname)',tracking]);if(tracked===pr.sha)await this.git(['update-ref','-d',tracking,pr.sha]);
-  notes.push('Local branch deleted or already absent; worktree files retained.');return notes.join(' ');
+  notes.push('Local branch deleted or already absent; primary checkout retained.');return notes.join(' ');
  }
 }
