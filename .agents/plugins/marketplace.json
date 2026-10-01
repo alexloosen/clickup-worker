@@ -1,0 +1,10 @@
+{
+  "name": "clickup-tasks-local",
+  "interface": {"displayName": "ClickUp Tasks (local)"},
+  "plugins": [{
+    "name": "puppeteer-bugs",
+    "source": {"source": "local", "path": "./plugins/puppeteer-bugs"},
+    "policy": {"installation": "AVAILABLE", "authentication": "ON_USE"},
+    "category": "Productivity"
+  }]
+}

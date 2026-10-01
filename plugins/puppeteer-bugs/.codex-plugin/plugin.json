@@ -1,0 +1,19 @@
+{
+  "interface": {
+    "displayName": "ClickUp Tasks",
+    "shortDescription": "Tasks to coding sessions",
+    "longDescription": "Connect your own ClickUp project and GitHub repository, browse tasks and comments, and start isolated Codex worktree sessions. Windows, macOS and Linux installers with per-user API token storage.",
+    "category": "Productivity",
+    "defaultPrompt": [
+      "Open my ClickUp task board.",
+      "Implement the task I select in a new worktree chat."
+    ],
+    "capabilities": []
+  },
+  "name": "puppeteer-bugs",
+  "version": "0.12.0",
+  "description": "Your ClickUp tasks, GitHub repository and isolated Codex implementation sessions.",
+  "keywords": [],
+  "skills": "./skills",
+  "mcpServers": "./.mcp.json"
+}

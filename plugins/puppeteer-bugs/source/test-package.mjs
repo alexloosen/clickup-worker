@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import Ajv2020 from 'ajv/dist/2020.js';
+const read=async name=>JSON.parse(await readFile(new URL(name,import.meta.url),'utf8'));
+const validate=new Ajv2020({strict:false}).compile(await read('./mcp.schema.json'));
+const portable=await read('../mcp.json');
+assert.equal(validate(portable),true,JSON.stringify(validate.errors));
+const regression=structuredClone(portable);
+regression.mcpServers['puppeteer-bugs-panel'].env_vars=['CODEX_APP_TOOLS_PIPE_PATH'];
+assert.equal(validate(regression),false,'Codex-only env_vars must not pass portable validation');
+const manifest=await read('../plugin.json'),legacyManifest=await read('../.codex-plugin/plugin.json');
+assert.equal(legacyManifest.mcpServers,'./.mcp.json');
+assert.equal(legacyManifest.version,manifest.version);
+const normalize=servers=>Object.fromEntries(Object.entries(servers).map(([key,value])=>[key,{env:{},...value}]));
+assert.deepEqual(normalize((await read('../.mcp.json')).mcpServers),normalize(portable.mcpServers));
+assert.deepEqual(manifest.extensions['com.openai'].interface.defaultPrompt,legacyManifest.interface.defaultPrompt);
+console.log('PASS: official portable MCP schema; invalid env_vars regression; compatibility server registration; matching server configuration and starter prompts.');

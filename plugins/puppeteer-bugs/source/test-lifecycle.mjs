@@ -1,0 +1,36 @@
+import assert from 'node:assert/strict';
+import {mkdtemp} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {Store} from './store.mjs';
+import {reserveLaunches,recordWork} from './dispatch.mjs';
+import {syncWorkStage} from './sync.mjs';
+import {ClickUpClient} from './clickup.mjs';
+import {SCOPE} from './config.mjs';
+const store=new Store(await mkdtemp(join(tmpdir(),'puppeteer-lifecycle-')));
+const ticket={id:'fixture',name:'Fixture',status:'to do',description:'Test only',assignees:[]};
+await store.mutate(s=>{s.tickets=[ticket];});
+const reserved=await reserveLaunches(store,[ticket],['fixture']);const launch=reserved.value.launches[0];
+assert.equal(launch.model,'gpt-6.1-sol');assert.equal(launch.thinking,'high');
+await assert.rejects(()=>reserveLaunches(store,[ticket],['fixture'],[{ticket_id:'fixture',model:'gpt-6-luna',thinking:'ultra'}]));
+let status='to do',writes=0,fail=false;
+const client=new ClickUpClient('synthetic',async(u,o)=>{
+ if(fail)throw Error('offline');
+ const task={id:'fixture',list:{id:SCOPE.listId},space:{id:SCOPE.spaceId},team_id:SCOPE.workspaceId,status:{status}};
+ if(o.method==='PUT'){writes++;status=JSON.parse(o.body).status;return Response.json({});}
+ if(u.pathname.endsWith('/space'))return Response.json({spaces:[{id:SCOPE.spaceId,name:SCOPE.spaceName}]});
+ if(u.pathname.endsWith('/fixture'))return Response.json(task);
+ return Response.json({id:SCOPE.listId,name:SCOPE.listName,space:{id:SCOPE.spaceId},statuses:[{status:'to do',type:'open'},{status:'in progress',type:'custom'},{status:'review requested',type:'custom'},{status:'complete',type:'done'}]});
+});
+const sync=()=>syncWorkStage(store,'fixture',launch.launch_id,()=>client);
+await recordWork(store,{ticket_id:'fixture',launch_id:launch.launch_id,status:'queued',client_thread_id:'client-new-thread:fixture'});
+assert.equal((await sync()).tickets[0].status,'in progress');assert.equal(writes,1);
+const pr='https://github.com/example-owner/ExampleProject/pull/6';
+await recordWork(store,{ticket_id:'fixture',launch_id:launch.launch_id,status:'review_requested',pr_url:pr});
+fail=true;let s=await sync();assert.ok(s.runs.fixture.sync_error);assert.equal(s.runs.fixture.pr_url,pr);assert.equal(s.tickets[0].status,'in progress');
+fail=false;s=await sync();assert.equal(s.tickets[0].status,'review requested');assert.equal(s.runs.fixture.sync_error,null);
+await recordWork(store,{ticket_id:'fixture',launch_id:launch.launch_id,status:'queued',thread_id:'real-thread'});
+s=await sync();assert.equal(s.runs.fixture.status,'review_requested');assert.equal(s.tickets[0].status,'review requested');assert.equal(writes,2);
+await client.finishBug('fixture','review requested');s=await sync();assert.equal(s.tickets[0].status,'complete');assert.equal(s.tickets[0].finished,true);assert.equal(writes,3);
+await assert.rejects(()=>syncWorkStage(store,'fixture','stale',()=>client));assert.equal(writes,3);
+console.log('PASS: model/thinking defaults and validation; session to In Progress; PR to Review Requested; offline preservation and retry; late event protection; completed ticket preservation; stale launch rejection.');
