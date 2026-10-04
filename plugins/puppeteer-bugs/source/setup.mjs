@@ -41,7 +41,7 @@ export async function saveSetup(store,credentials,input,options={}){
  return store.mutate(async s=>{
   if(input.expectedSetupId!==(s.setup?.setupId||''))throw Error('Setup changed in another window. Reopen Setup.');
   const existing=s.setup,changed=!existing||['workspaceId','clickupUrl','repositoryUrl','repositoryPath','baseBranch'].some(k=>existing[k]!==checked.setup[k]);
-  if(changed&&Object.values(s.runs).some(r=>r.status!=='released'&&!r.finish?.completed_at))throw Error('Finish or stop and release existing assignments before changing the project.');
+  if(changed&&Object.values(s.runs).some(r=>!['released','investigated'].includes(r.status)&&!r.finish?.completed_at))throw Error('Finish or stop and release existing assignments before changing the project.');
   if(input.token?.trim())await credentials.save(token);
   if(changed){const history=s.setup_history||[];if(existing)history.push({setup:existing,runs:s.runs,history:s.history});for(const key of Object.keys(s))delete s[key];Object.assign(s,{version:1,tickets:[],runs:{},setup_history:history,filter:checked.filter,catalog:checked.catalog});}
   s.setup={...checked.setup,setupId:randomUUID()};s.catalog=checked.catalog;s.connection_verified_at=new Date().toISOString();s.connection_required=false;s.setup_error=null;s.error=null;

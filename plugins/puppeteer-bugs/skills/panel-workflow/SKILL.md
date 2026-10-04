@@ -5,6 +5,10 @@ description: Open the ClickUp Tasks panel, configure a user's project, refresh t
 
 # ClickUp Tasks panel
 
+Investigate task authorizes a separate read-only investigation chat via start_bug_investigations in the existing configured checkout. It uses the selected model, thinking and additional context but does not implement, commit or push. The investigate-bug skill examines scripts, prefabs and existing behavior; complete_bug_investigation publishes findings (explicitly including functionality already in the game) to ClickUp and sets Review Requested for every conclusion. Check sync_error and use retry_bug_status_sync for a failed status update. Completed investigations unlock the ticket for separate implementation, whose fresh comment context includes the findings. Previous investigation records are retained in history.
+
+Cancel ticket in the three-dot Ticket options menu authorizes cancel_bug_ticket to set the ticket's actual Cancelled status and verify it. No PR or commit is required. Active agents must first be stopped and their assignment released. Cancellation does not remove chats, branches or worktrees and does not change assignees.
+
 Discover the actual host-prefixed tools. open_bug_board opens the panel; get_bug_board_state reads local state; refresh_bug_board reads ClickUp directly. Setup is in the panel's top-right header, the board utilities menu, and open_clickup_settings. The header shows the loaded version. API tokens are entered only in the temporary local page and stored locally (DPAPI on Windows; owner-only token file on macOS/Linux). Never request or expose tokens in chat.
 
 The user configures a ClickUp workspace, Space, Folder or List link, GitHub repository URL, absolute local checkout and existing target branch. The checkout must already be added as a local Git project in Codex. There are no fixed workspace IDs, repository owners, Codex project IDs, user paths or target branches. The user's local Git/GitHub login is used for repository operations.

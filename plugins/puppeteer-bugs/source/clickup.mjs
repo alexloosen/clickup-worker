@@ -41,13 +41,26 @@ export class ClickUpClient {
     }throw new ClickUpError('Comment history exceeded the page limit.');
   }
   async postAcceptance(id,text){await this.verifyTicket(id);const result=await this.request('task/'+id+'/comment',{},'POST',{comment_text:text,notify_all:false});if(!result.id)throw new ClickUpError('Comment publication was not confirmed.');return String(result.id);}
+  async cancelBug(id,expectedStatus){
+    const task=await this.verifyTicket(id),list=await this.verifyScope();
+    const targets=list.statuses.filter(s=>s.status.trim().toLowerCase()==='cancelled');
+    if(targets.length!==1)throw new ClickUpError('Expected one Cancelled status on this ticket’s ClickUp list.');
+    const target=targets[0].status;
+    if(task.status?.status===target)return {status:target,finished:true};
+    if(task.status?.status!==expectedStatus)throw new ClickUpError('Ticket status changed. Refresh before cancelling.');
+    if(['done','closed'].includes(task.status?.type))throw new ClickUpError('This ticket is already finished.');
+    await this.request('task/'+id,{},'PUT',{status:target});
+    const verified=await this.get('task/'+id);
+    if(verified.status?.status!==target)throw new ClickUpError('Cancellation was not confirmed. Refresh before retrying.');
+    return {status:target,finished:true};
+  }
   async setWorkStage(id, stage) {
     if(!['in progress','review requested'].includes(stage)||!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/.test(id))throw new ClickUpError('Invalid work stage.');
     const list=await this.verifyScope();const task=await this.get('task/'+id);
     if(String(task.id)!==id||String(task.list?.id)!==this.scope.listId||String(task.space?.id)!==this.scope.spaceId||String(task.team_id)!==this.scope.workspaceId)throw new ClickUpError('Ticket scope mismatch.','scope');
     const current=list.statuses.find(s=>s.status===task.status?.status);
     if(!current)throw new ClickUpError('Unknown current ClickUp status.');
-    const finished=['done','closed'].includes(current.type);
+    const finished=['done','closed'].includes(current.type)||current.status.trim().toLowerCase()==='cancelled';
     if(finished||(stage==='in progress'&&(['review requested','reviewed'].includes(current.status.toLowerCase())||current.status===this.scope.workflow?.review_requested)))return {status:current.status,finished};
     const mapped=this.scope.workflow?.[stage==='in progress'?'in_progress':'review_requested'];const matches=list.statuses.filter(s=>(mapped?s.status===mapped:s.status.toLowerCase()===stage)&&!['done','closed'].includes(s.type));
     if(matches.length!==1)throw new ClickUpError('Required ClickUp status is unavailable: '+stage);
@@ -85,7 +98,7 @@ export class ClickUpClient {
     let members=[{id:String(user.user.id),name:user.user.username||'Me'}];try{const teams=await this.get('team');const team=teams.teams?.find(t=>String(t.id)===this.scope.workspaceId);if(team?.members)members=team.members.map(m=>({id:String(m.user.id),name:m.user.username||String(m.user.id)}));}catch{}
     return {workspace_id:this.scope.workspaceId,spaces:spaces.filter(s=>!s.archived).map(s=>({id:String(s.id),name:s.name})),lists:lists.sort((a,b)=>(a.space_name+'/'+a.folder_name+'/'+a.name).localeCompare(b.space_name+'/'+b.folder_name+'/'+b.name)),me:{id:String(user.user.id),name:user.user.username||'Me'},members,fetched_at:new Date().toISOString()};
   }
-  normalizeTask(t,catalog,sourceIds){if(t.team_id!=null&&String(t.team_id)!==this.scope.workspaceId)throw new ClickUpError('Task workspace mismatch.','scope');if(!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/.test(t.id)||typeof t.name!=='string'||typeof t.status?.status!=='string')throw new ClickUpError('Invalid ticket response.');const home=catalog.lists.find(l=>l.id===String(t.list?.id||sourceIds[0]));if(!home||t.space?.id!=null&&String(t.space.id)!==home.space_id)throw new ClickUpError('Task home list is outside the accessible workspace hierarchy.','scope');const scope=taskScope({workspaceId:this.scope.workspaceId,spaceId:home.space_id,spaceName:home.space_name,listId:home.id,listName:home.name});return {id:t.id,name:t.name,status:t.status.status,status_type:t.status.type,finished:['done','closed'].includes(t.status.type),priority:t.priority?.priority||null,assignees:(t.assignees||[]).map(a=>a.username||String(a.id)),assignee_ids:(t.assignees||[]).map(a=>String(a.id)),description:t.markdown_description??t.text_content??t.description??'',url:'https://app.clickup.com/t/'+t.id,scope,source_list_ids:sourceIds,tags:(t.tags||[]).map(t=>t.name),parent:t.parent||null,due_date:t.due_date||null,created_date:t.date_created||null,updated_date:t.date_updated||null,custom_fields:(t.custom_fields||[]).map(c=>({id:c.id,name:c.name,type:c.type,type_config:c.type_config,value:c.value}))};}
+  normalizeTask(t,catalog,sourceIds){if(t.team_id!=null&&String(t.team_id)!==this.scope.workspaceId)throw new ClickUpError('Task workspace mismatch.','scope');if(!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/.test(t.id)||typeof t.name!=='string'||typeof t.status?.status!=='string')throw new ClickUpError('Invalid ticket response.');const home=catalog.lists.find(l=>l.id===String(t.list?.id||sourceIds[0]));if(!home||t.space?.id!=null&&String(t.space.id)!==home.space_id)throw new ClickUpError('Task home list is outside the accessible workspace hierarchy.','scope');const scope=taskScope({workspaceId:this.scope.workspaceId,spaceId:home.space_id,spaceName:home.space_name,listId:home.id,listName:home.name});return {id:t.id,name:t.name,status:t.status.status,status_type:t.status.type,finished:['done','closed'].includes(t.status.type)||t.status.status.trim().toLowerCase()==='cancelled',priority:t.priority?.priority||null,assignees:(t.assignees||[]).map(a=>a.username||String(a.id)),assignee_ids:(t.assignees||[]).map(a=>String(a.id)),description:t.markdown_description??t.text_content??t.description??'',url:'https://app.clickup.com/t/'+t.id,scope,source_list_ids:sourceIds,tags:(t.tags||[]).map(t=>t.name),parent:t.parent||null,due_date:t.due_date||null,created_date:t.date_created||null,updated_date:t.date_updated||null,custom_fields:(t.custom_fields||[]).map(c=>({id:c.id,name:c.name,type:c.type,type_config:c.type_config,value:c.value}))};}
   async workspaceTasks(catalog,lists){
     const selected=lists.map(l=>l.id),tasks=new Map(),pages=new Set();if(!selected.length)return [];
     for(let page=0;page<1000;page++){const response=await this.get('team/'+this.scope.workspaceId+'/task',{page,list_ids:selected,include_closed:true,subtasks:true,include_markdown_description:true,order_by:'created',reverse:true});if(!Array.isArray(response.tasks))throw new ClickUpError('Invalid workspace task page.');const signature=response.tasks.map(t=>t.id).join(',');if(signature&&pages.has(signature))throw new ClickUpError('Workspace task pagination repeated. No partial result was saved.');pages.add(signature);for(const t of response.tasks){if(!t.archived){const n=this.normalizeTask(t,catalog,selected.includes(String(t.list?.id))?[String(t.list.id)]:selected);tasks.set(n.id,n);}}if(response.last_page===true||!response.tasks.length)return [...tasks.values()];}throw new ClickUpError('Workspace pagination exceeded the safety limit.');
@@ -116,7 +129,7 @@ export class ClickUpClient {
         if(t.space?.id!=null&&String(t.space.id)!==this.scope.spaceId) throw new ClickUpError('A task belongs to a different space. Refresh stopped.','scope');
         if(t.archived||(!includeFinished&&['done','closed'].includes(t.status?.type))||!statuses.has(t.status?.status))continue;
         if(!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/.test(t.id)||typeof t.name!=='string') throw new ClickUpError('ClickUp returned an invalid ticket.');
-        tasks.set(t.id,{id:t.id,name:t.name,status:t.status.status,finished:list.statuses.some(s=>s.status===t.status.status&&['done','closed'].includes(s.type)),priority:t.priority?.priority||null,assignees:(t.assignees||[]).map(a=>a.username||String(a.id)),description:t.markdown_description??t.text_content??t.description??'',url:`https://app.clickup.com/t/${t.id}`});
+        tasks.set(t.id,{id:t.id,name:t.name,status:t.status.status,finished:t.status.status.trim().toLowerCase()==='cancelled'||list.statuses.some(s=>s.status===t.status.status&&['done','closed'].includes(s.type)),priority:t.priority?.priority||null,assignees:(t.assignees||[]).map(a=>a.username||String(a.id)),description:t.markdown_description??t.text_content??t.description??'',url:`https://app.clickup.com/t/${t.id}`});
       }
       // Read the next page unless ClickUp explicitly says this is the last one.
       // An empty page is the backwards-compatible termination condition.
@@ -125,4 +138,3 @@ export class ClickUpClient {
     throw new ClickUpError('ClickUp pagination exceeded the safety limit. No partial result was saved.');
   }
 }
-

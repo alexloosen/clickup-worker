@@ -10,7 +10,7 @@ export async function finishBug(store,{ticket_id,expected_status,confirmed_teste
  const save=async fn=>(await store.mutate(s=>{const r=s.runs[ticket_id];if(!r||r.launch_id!==launch||r.status==='released')throw Error('Assignment changed during finishing.');fn(r,s);})).state;
  try{
   const state=await store.read(),r=state.runs[ticket_id];launch=r?.launch_id;
-  if(!r||r.status==='released'||(!r.pr_url&&!['direct_develop','local_commit'].includes(r.delivery_mode)))throw Error('A verified delivery is required before finishing this bug.');
+  if(!r||r.work_kind==='investigation'||r.status==='released'||(!r.pr_url&&!['direct_develop','local_commit'].includes(r.delivery_mode)))throw Error('A verified delivery is required before finishing this bug.');
   const pr=r.delivery_mode==='local_commit'?await repository.localDelivery(r.commit_sha,r.branch):r.delivery_mode==='direct_develop'?await repository.directDelivery(r.commit_sha,r.branch):await repository.pullRequest(r.pr_url);
   const ticket=await client.verifyTicket(ticket_id);
   if(ticket.status?.status!==expected_status&&!['done','closed'].includes(ticket.status?.type))throw Error('Ticket status changed. Refresh before finishing.');
