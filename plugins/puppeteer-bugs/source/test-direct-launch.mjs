@@ -16,7 +16,7 @@ assert.deepEqual(decodeToolResult({success:true,contentItems:[{type:'inputText',
 assert.throws(()=>decodeToolResult({success:false,contentItems:[{type:'inputText',text:'Rejected by host'}]}),/Rejected by host/);
 assert.throws(()=>decodeToolResult({success:true,contentItems:[{type:'inputText',text:'Unstructured success'}]}),/no structured result/);
 await assert.rejects(()=>new HostTools('').discover(),/connection is unavailable/);
-const project={projectId:SCOPE.projectId,label:SCOPE.projectName,path:SCOPE.repositoryPath.toUpperCase().replaceAll('\\','/'),hostId:SCOPE.hostId,isGitRepository:true};
+const project={projectId:SCOPE.projectId,label:SCOPE.projectName,path:process.platform==='win32'?SCOPE.repositoryPath.toUpperCase().replaceAll('\\','/'):SCOPE.repositoryPath,hostId:SCOPE.hostId,isGitRepository:true};
 assert.equal(verifyProject({projects:[project]}),project);
 for(const change of [{path:'C:/Other'},{hostId:'remote'},{isGitRepository:false}]){assert.throws(()=>verifyProject({projects:[{...project,...change}]}),/exactly one local Git project/);}
 const directory=await mkdtemp(join(tmpdir(),'puppeteer-direct-test-')),store=new Store(directory);

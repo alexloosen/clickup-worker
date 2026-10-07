@@ -1,5 +1,6 @@
 import net from 'node:net';
 import {randomUUID} from 'node:crypto';
+import {DEFAULT_MODEL,DEFAULT_THINKING} from './models.mjs';
 const MAX_FRAME_BYTES=8*1024*1024;
 export function callerContext(extra={}){
  const meta=extra._meta||{};
@@ -14,6 +15,10 @@ export function decodeToolResult(result){
  if(result?.success!==true)throw Error((result?.contentItems||[]).filter(c=>c.type==='inputText').map(c=>c.text).join('\n')||'Codex rejected the request.');
  for(const item of result.contentItems||[]){if(item.type==='inputText'){try{return JSON.parse(item.text);}catch{}}}
  throw Error('Codex returned no structured result. Check existing chats before retrying.');
+}
+export function hostModels(tool){
+ const description=tool?.inputSchema?.properties?.model?.description||'';
+ return Object.fromEntries([...description.matchAll(/(gpt-[\w.-]+)\s*\([^)]*?supported reasoning efforts:\s*([^)]*)\)/g)].map(m=>[m[1],m[2].split(',').map(x=>x.trim())]));
 }
 // Use the same host-provided local bridge as the bundled codex-app-tools MCP.
 // No new Codex process, credentials, permission overrides or private socket discovery.
@@ -49,7 +54,10 @@ export class HostTools{
   for(const name of ['list_projects','create_thread']){
    if(!result?.tools?.some(t=>t.name===name&&t.namespace==='codex_app'))throw Error(`Codex does not expose ${name}; no implementation was started.`);
   }
+  this.tools=result.tools;this.models=hostModels(result.tools.find(t=>t.name==='create_thread'&&t.namespace==='codex_app'));
+  return {models:this.models,navigation:result.tools.some(t=>t.name==='navigate_to_codex_page'&&t.namespace==='codex_app')};
  }
+ validateOptions(options=[]){if(!Object.keys(this.models||{}).length)return;for(const option of options){const model=option.model||DEFAULT_MODEL,thinking=option.thinking||DEFAULT_THINKING;if(!this.models[model]?.includes(thinking))throw Error(`This Codex host does not support ${model} with ${thinking} thinking. Change Ticket options before starting. No task was reserved.`);}}
  async call(name,args,caller,signal){
   return decodeToolResult(await this.request('tools/call',{arguments:args,callerSource:'codex',namespace:'codex_app',tool:name,...caller,callId:`mcp-call-${randomUUID()}`},{signal,timeout:120000}));
  }

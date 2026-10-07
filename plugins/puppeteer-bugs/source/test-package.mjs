@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import Ajv2020 from 'ajv/dist/2020.js';
+import {VERSION} from './config.mjs';
 const read=async name=>JSON.parse(await readFile(new URL(name,import.meta.url),'utf8'));
 const validate=new Ajv2020({strict:false}).compile(await read('./mcp.schema.json'));
 const portable=await read('../mcp.json');
@@ -11,6 +12,7 @@ assert.equal(validate(regression),false,'Codex-only env_vars must not pass porta
 const manifest=await read('../plugin.json'),legacyManifest=await read('../.codex-plugin/plugin.json');
 assert.equal(legacyManifest.mcpServers,'./.mcp.json');
 assert.equal(legacyManifest.version,manifest.version);
+assert.equal(manifest.version,VERSION);
 const normalize=servers=>Object.fromEntries(Object.entries(servers).map(([key,value])=>[key,{env:{},...value}]));
 assert.deepEqual(normalize((await read('../.mcp.json')).mcpServers),normalize(portable.mcpServers));
 assert.deepEqual(manifest.extensions['com.openai'].interface.defaultPrompt,legacyManifest.interface.defaultPrompt);

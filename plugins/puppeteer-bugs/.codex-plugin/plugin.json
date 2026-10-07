@@ -11,7 +11,7 @@
     "capabilities": []
   },
   "name": "puppeteer-bugs",
-  "version": "0.13.1",
+  "version": "0.14.0",
   "description": "Your ClickUp tasks, GitHub repository and isolated Codex implementation sessions.",
   "keywords": [],
   "skills": "./skills",

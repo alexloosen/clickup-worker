@@ -1,4 +1,4 @@
-# ClickUp Tasks 0.12.3
+# ClickUp Tasks 0.14.0
 
 A Codex plugin for your own ClickUp project and GitHub repository. Browse tasks and comments, save filters, and send selected tasks into worktree chats or the existing checkout.
 
@@ -35,6 +35,18 @@ In Progress and Review Requested are synchronized from verified coding progress.
 **Clean old worktrees** rechecks recorded accepted deliveries and removes matching clean linked worktrees, including detached copies left by older versions. Confirm the associated coding chats have stopped. Dirty, locked, changed, primary and unverified worktrees are preserved; no folders are deleted merely because they are old. Generated files inside removed worktrees are also deleted.
 
 Filters, saved presets, task comments and timezone follow each user's setup. Changes in project setup preserve older work records locally; stale launch IDs cannot update new assignments. The plugin never changes assignees automatically.
+
+## Panel and recovery
+
+**Refresh** fetches the latest ClickUp tasks without opening Setup. The header shows the connected repository, actual target branch and last refresh time. **Board tools** contains the readiness check, list-directory refresh and local-data recovery. **Coding chat** navigates directly without sending an agent message. Local-only commits and retained checkouts are labelled explicitly.
+
+New worker chats call `register_bug_worker` after checking their repository identity. Pending launches that remain unconfirmed show **Launch needs attention** after two minutes. Codex does not currently provide a lookup API for pending chat IDs. Reconnect the original chat from Ticket options using its final ID; the plugin verifies its launch ID in the chat history. Never retry creation until the previous launch has been checked and stopped.
+
+Dead-process locks recover automatically. Old ownerless locks and corrupted board data have an explicit recovery flow that preserves the original files. A previous state snapshot is kept as `state.json.backup`. Stop previous operations and inspect ClickUp and coding chats before restoring or resetting; a snapshot may be older than a completed external action.
+
+Definite API rejections no longer permanently block comments. Uncertain outcomes retain duplicate protection and can be inspected with **Ticket options → Recover comment attempt**. That action checks for an existing comment and unlocks a user-confirmed retry; it never posts by itself.
+
+For updates, stop running tasks, rerun the installer in the same mode, and fully restart Codex. Keep the previous package for rollback. Never share the data directory: task content, settings, history and preserved recovery files are private. The main repository README includes recovery, rollback and data-removal instructions.
 
 ## Data and sharing
 

@@ -19,6 +19,8 @@ Required identity (stop and report mismatches):
 
 Follow repository AGENTS.md and the puppeteer-bugs investigate-bug skill. Verify the checkout and origin. Inspect existing scripts, prefabs, scenes, components, references and tests relevant to the request. Trace how the functionality is wired into the game, not just whether a similarly named script exists. Record the current branch/commit and any relevant uncommitted changes as evidence. Do not edit repository files, switch branches, commit, push, create a PR, or start implementation. Use normal host permissions and read-only inspection.
 
+After verifying the checkout identity, call register_bug_worker with ticket_id ${ticket.id} and launch_id ${launchId} to connect this chat to the panel. Report any unavailable tool and continue the authorized investigation.
+
 Determine whether the requested functionality is already in the game, a refactor/extension of existing scripts, new scripts, a mixture, or inconclusive. If already present, explicitly state that in the ClickUp comment with a short explanation of how to use it. Keep concrete file paths, symbols, prefab/component relationships and supporting evidence in this chat; distill the gameplay gap and recommended approach for the comment. Distinguish verified behavior from assumptions.
 
 ${COMMENT_GUIDANCE}
@@ -36,6 +38,7 @@ export const conclusions={already_present:'The requested functionality is alread
 // Persist the write intent before posting. A lost response can be recovered from
 // the marker on ClickUp, without blindly posting a second comment.
 export async function completeInvestigation(store,{ticket_id,launch_id,conclusion,findings},client){
+ return store.withTickets([ticket_id],async()=>{
  if(!Object.hasOwn(conclusions,conclusion)||typeof findings!=='string'||!findings.trim())throw Error('Provide an investigation conclusion and concise team-facing findings.');
  findings=findings.trim();
  if(findings.length>MAX_FINDINGS_CHARS||findings.split(/\s+/u).length>MAX_FINDINGS_WORDS)throw Error(`Investigation summary is too long. Rewrite it in plain language: aim for 100–150 words, maximum ${MAX_FINDINGS_WORDS} words and ${MAX_FINDINGS_CHARS} characters. Keep what works, what is missing, up to three recommended changes, essential decisions and a brief verification limit. Keep detailed evidence in the chat; do not truncate or split it into multiple comments. Nothing was posted.`);
@@ -53,8 +56,9 @@ export async function completeInvestigation(store,{ticket_id,launch_id,conclusio
  });
  if(claimed.value){
   const text=`Investigation: ${conclusions[conclusion]}\n\n${findings.trim()}\n\n${marker}`;
-  const comment_id=await client.postAcceptance(ticket_id,text);
+  let comment_id;try{comment_id=await client.postAcceptance(ticket_id,text);}catch(e){if(e.definiteRejection)await store.mutate(s=>{check(s).investigation.comment_pending=false;});throw e;}
   await store.mutate(s=>{const r=check(s);Object.assign(r.investigation,{comment_id,comment_pending:false});});
  }
  return (await store.mutate(s=>{const r=check(s);r.status='investigated';r.summary='Investigation saved to ClickUp. Ready for review and separate implementation.';r.updated_at=new Date().toISOString();delete s.ticket_comments?.[ticket_id];})).state;
+ });
 }

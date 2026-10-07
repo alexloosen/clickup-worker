@@ -20,8 +20,8 @@ jobs:
           cache-dependency-path: plugins/puppeteer-bugs/source/package-lock.json
       - run: npm ci
       - run: node build.mjs
+      - run: git diff --exit-code -- ../server
       - run: node test-platform.mjs
-      - if: runner.os == 'Windows'
-        run: node test.mjs
+      - run: node test.mjs
       - if: runner.os != 'Windows'
         run: sh -n ../../../install.sh

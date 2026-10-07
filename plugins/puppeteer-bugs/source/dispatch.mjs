@@ -18,6 +18,8 @@ Required identity (stop and report mismatches):
 
 Follow repository AGENTS.md and the puppeteer-bugs fix-bug skill. Verify the remote and worktree, check for an existing fix, read the investigation comments included below, verify their findings against the current checkout, implement and run relevant checks. If the investigation says functionality already exists, verify that evidence before making changes; report when no implementation is needed. Use normal host permissions; never change sandbox or approval settings. Use this repository's configured Git credential helper or GitHub CLI authentication; never print or persist credentials. Missing publication access does not prevent authorized local work.
 
+After verifying the repository identity, call register_bug_worker with ticket_id ${ticket.id} and launch_id ${launchId}. This connects the panel to this chat using the host's verified identity. Do this before lengthy implementation work; continue authorized work and report the limitation if the tool is unavailable.
+
 Sandbox failure recovery: try commands with the default permissions first. If a required command fails because the sandbox blocks shared worktree Git metadata, networking, the credential store or Unity licensing, request a narrowly scoped retry through the host's supported approval mechanism (exec_command sandbox_permissions: require_escalated when available). An approved command retry is not a change to sandbox or approval settings. Respect rejection or unavailable escalation; report the exact blocker and continue unaffected work. Never bypass a denial.
 
 Keep the assigned worktree's real Git metadata. Never substitute a temporary GIT_DIR, copy its index/refs, or initialize a replacement repository to evade a permission failure. Verify the actual branch with git branch --show-current before recording it. An unauthenticated gh session alone does not establish that Git credentials are missing: use the configured Git credential helper through the approved command path. For sandbox-only Unity licensing failures, retry the repository's required batch launcher through that same approval path; do not launch Unity directly, alter licensing, or remove worker limits. Distinguish sandbox access failures from failures confirmed after an approved retry.
@@ -36,7 +38,7 @@ export async function reserveLaunches(store,tickets,ids,options=[],work_kind='im
   for(const o of options){if(!validThinking(o.model,o.thinking))throw new Error('Unsupported thinking level for this model.');if(!validModel(o.model))throw new Error('Unsupported model selection.');if(!['pull_request','direct_develop','local_commit'].includes(o.delivery_mode||'pull_request')||typeof (o.additional_context??'')!=='string'||(o.additional_context||'').length>20000)throw new Error('Invalid bug launch options.');}
   if(new Set(ids).size!==ids.length)throw new Error('Select each bug only once.');
   const found=ids.map(id=>{const t=tickets.find(t=>t.id===id);if(!t)throw new Error(`Ticket ${id} is no longer open in the selected ClickUp view. Refresh the board.`);return t;});
-  return store.mutate(s=>{
+  return store.withTickets(ids,()=>store.mutate(s=>{
     if(s.setup?.setupId!==SCOPE.setupId)throw Error("Setup changed while preparing tasks. Refresh and try again.");
     const launches=[],skipped=[];
     const localRequested=work_kind==='investigation'?[]:found.filter(t=>options.find(o=>o.ticket_id===t.id)?.delivery_mode==='local_commit'&&!(s.runs[t.id]&&!['released','investigated'].includes(s.runs[t.id].status)&&(active.has(s.runs[t.id].status)||s.runs[t.id].thread_id||s.runs[t.id].client_thread_id)));
@@ -49,9 +51,9 @@ export async function reserveLaunches(store,tickets,ids,options=[],work_kind='im
       const launch={ticket_id:t.id,scope:taskScope(t.scope),launch_id,work_kind,delivery_mode,additional_context,model,thinking,title:work_kind==='investigation'?`Investigate: ${t.name}`:t.name,project_id:SCOPE.projectId,host_id:SCOPE.hostId,target:{type:'project',projectId:SCOPE.projectId,environment:work_kind==='investigation'||delivery_mode==='local_commit'?{type:'local'}:{type:'worktree',startingState:{type:'branch',branchName:SCOPE.baseBranch}}},prompt:(work_kind==='investigation'?investigationPrompt:codingPrompt)(t,launch_id,{delivery_mode,additional_context})};
       s.runs[t.id].launch=launch;launches.push(launch);
     }return {launches,skipped,scope:SCOPE};
-  });
+  }));
 }
-export async function recordWork(store,args){return store.mutate(s=>{
+export async function recordWork(store,args){return store.withTickets([args.ticket_id],()=>store.mutate(s=>{
   const old=s.runs[args.ticket_id];
   if(args.pr_url&&!safePr(args.pr_url))throw Error("The PR does not belong to the configured repository.");
   if(old?.status==='released')throw new Error('This assignment was released. Old progress cannot relock it.');
@@ -65,19 +67,21 @@ export async function recordWork(store,args){return store.mutate(s=>{
   // A fast child may start before the dispatcher records its returned chat ID.
   const preserveProgress=old.status==='investigated'||(args.status==='queued'&&['in_progress','blocked','review_requested','completed'].includes(old.status))||(['review_requested','completed'].includes(old.status)&&['queued','in_progress','blocked'].includes(args.status));
   s.runs[args.ticket_id]={...old,...args,...preserveProgress?{status:old.status,summary:old.summary}:{},updated_at:new Date().toISOString()};
-});}
+}));}
 
 export async function releaseAssignment(store,{ticket_id,expected_updated_at,expected_launch_id,confirmed_stopped}){
  if(confirmed_stopped!==true)throw new Error('Confirm that the previous coding task has been stopped.');
- return store.mutate(s=>{
+ return store.withTickets([ticket_id],()=>store.mutate(s=>{
   const old=s.runs[ticket_id];
   if(!old)throw new Error('No assignment exists for this bug.');
-  if(old.finishing)throw new Error('Finishing is in progress. Wait before releasing this assignment.');
+  // The ticket lock proves no finishing operation is running; an old flag may
+  // remain after a process crash.
+  old.finishing=false;
   if((old.launch_id||null)!==expected_launch_id||old.updated_at!==expected_updated_at)throw new Error('Assignment changed. Review its latest state before releasing it.');
   if(old.status==='released')return;
   const {launch,...record}=old;
   s.history??={};s.history[ticket_id]??=[];
   s.history[ticket_id].push({...record,released_at:new Date().toISOString()});
   s.runs[ticket_id]={...old,status:'released',summary:'Assignment released by the user after stopping the previous task. Ready to start again.',updated_at:new Date().toISOString()};
- });
+ }));
 }

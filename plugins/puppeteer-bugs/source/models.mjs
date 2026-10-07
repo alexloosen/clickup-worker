@@ -10,5 +10,5 @@ export function validModel(model){return model===undefined||model===''||MODELS.s
 export const DEFAULT_MODEL='gpt-6.1-sol';
 export const DEFAULT_THINKING='high';
 export const THINKING=['low','medium','high','xhigh','max','ultra'];
-export const thinkingModes=model=>model==='gpt-6-luna'?THINKING.slice(0,-1):THINKING;
+export const thinkingModes=model=>['gpt-6-luna','gpt-5.6-luna'].includes(model)?THINKING.slice(0,-1):THINKING;
 export const validThinking=(model,value)=>thinkingModes(model||DEFAULT_MODEL).includes(value||DEFAULT_THINKING);

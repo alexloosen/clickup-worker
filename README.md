@@ -46,6 +46,29 @@ To remove the connection: `codex mcp remove puppeteer-bugs-panel`. Remove the lo
 
 ## Development
 
-From `plugins/puppeteer-bugs/source`: `npm ci`, `node build.mjs`, `node test.mjs` (the full legacy task suite runs on Windows). `node test-platform.mjs` covers OS paths, token persistence/permissions and installer configuration on all three platforms. CI runs these checks; tests never create real coding chats.
+From `plugins/puppeteer-bugs/source`: `npm ci`, `node build.mjs`, `node test.mjs`. CI runs the full functional suite and `node test-platform.mjs` on Windows, macOS and Linux. Tests use temporary data and repositories; they never create real coding chats or publish changes. Interactive desktop launches still need a smoke test on each target host.
+
+Run `node preview.mjs` from the source folder for a loopback-only UI preview with synthetic tasks. Optional URL parameters: `?theme=dark`, `?scenario=pending`, `?scenario=recovery`, or `?scenario=empty`. It never contacts ClickUp or GitHub.
+
+## Sharing and updating with other developers
+
+Version **0.14.0** adds visible Refresh and Board tools controls, readiness checks, direct chat navigation, accurate delivery labels, and recovery for interrupted operations. Each developer installs their own copy and enters their own token and repository settings. Share the package or repository, **never your local data directory**.
+
+After installation, open **Setup**, save the project, then choose **Board tools → Check setup readiness**. Refresh the board and try one task in worktree/PR mode before starting a batch. Verify that its chat opens from the panel and that its status updates. Local-commit mode changes the existing checkout; only use it when that checkout is free for the task.
+
+To update: stop plugin operations and task chats, keep the previous package, run the new installer using the same mode as before, and fully restart Codex. Check the version in the panel. Do not run old and new plugin server versions against the same local data directory at the same time. Connection-only installs still require a separate update of the account-installed plugin.
+
+To roll back: stop the app, reinstall the previous package using its installer, and restart. This release retains state format version 1. Keep a private copy of the data directory before rolling back; restore an older data snapshot only after checking chats, PRs, and ClickUp for work performed since that snapshot. Installer configuration backups are available beside `config.toml`; restoring one replaces all changes made to that configuration since the backup.
+
+## Recovering interrupted work
+
+- Locks created by this version identify their owning process. A dead process's lock is recovered automatically; live operations are never unlocked merely because they are slow. Locks from older versions require **Board tools → Recover local data**, after stopping prior operations and restarting Codex.
+- A readable previous snapshot is kept in `state.json.backup`. An unreadable board opens in recovery mode. The recovery action preserves the original files before restoring a backup or explicitly resetting the board. It never creates chats or posts comments. Inspect existing work before retrying anything; a backup may predate the latest external action.
+- Definite ClickUp rejections allow a comment retry. Lost responses remain protected against duplicates. **Ticket options → Recover comment attempt** rechecks ClickUp and requires you to inspect the previous attempt before unlocking a retry. Then retry the original action in its existing task chat or use Mark finished again.
+- New task chats register their verified identity with the panel. If no final chat identity appears after two minutes, the panel shows **Launch needs attention**. Codex currently exposes no API to resolve a pending `clientThreadId`; do not treat one as a real chat ID. Use **Ticket options → Verify & reconnect** with the final ID of the original chat, or ask that chat to call `register_bug_worker` with its original task and launch IDs. Reconnection verifies the launch ID in the chat's history. Stop a failed or abandoned launch before releasing its assignment.
+
+The board refreshes from ClickUp when opened, on **Refresh**, when changing a server-side filter, and before launching work. Background polling only checks local progress; the visible Updated timestamp shows the last ClickUp refresh. Polling uses change detection and omits stored history and cached comments. Comments load for the selected task and the cache retains at most 30 tasks. Delivery history and recovery copies remain local until you remove them.
+
+Task descriptions, comments, and additional context are included in the coding or investigation chat. Keep that in mind when choosing which tasks to launch. To remove local data, stop Codex and remove the data directory listed above after saving any records you need. Removing the token or uninstalling the connection alone does not erase task history or recovery copies.
 
 See [task delivery and setup details](plugins/puppeteer-bugs/README.md).

@@ -19,7 +19,7 @@ function panel({supported=true,creations=[{ticket_id:'ticket-a',thread_id:'worke
   async callServerTool(args){calls.push(args);if(reject)throw Error('Transport failed');return failure?{isError:true,content:[{type:'text',text:'Creation unavailable'}]}:{structuredContent:args.name==='open_clickup_settings'?{url:setupUrl}:{creations,state:{tickets:[],runs:{}}}};}
  }
  const context=vm.createContext({App:HostApp,OpenAIExtensions,DEFAULT_FILTER,normalizeFilter,MODELS,DEFAULT_MODEL,DEFAULT_THINKING,thinkingModes,safePr,VERSION,document:{getElementById:()=>null}});
- vm.runInContext(source+'\nperform=async action=>action();accept=()=>{};render=()=>{};boardSettings=()=>{menuId="board";};connected=true;globalThis.testApi={start,send,connect,error:()=>localError};',context);
+ vm.runInContext(source+'\nperform=async action=>action();accept=()=>{};render=()=>{};boardSettings=()=>{menuId="board";};connected=true;globalThis.testApi={start,connect,error:()=>localError};',context);
  return {...context.testApi,messages,calls,links};
 }
 const single=panel();await single.start(['ticket-a']);
@@ -43,18 +43,16 @@ assert.equal(failed.messages.length,0);
 const transport=panel({reject:true});await assert.rejects(()=>transport.start(['ticket-a']),/Transport failed/);
 assert.equal(transport.messages.length,0);assert.equal(transport.calls.length,1);
 const partial=panel({creations:[{thread_id:'worker-a'},{ticket_id:'ticket-b',error:'Worktree creation failed'}]});await assert.rejects(()=>partial.start(['ticket-a','ticket-b']),/ticket-b: Worktree creation failed/);assert.equal(partial.messages.length,0);
-const existing=panel();await existing.send('Open the existing coding chat');assert.equal(existing.messages[0]._meta['openai/message'].target,'active');
-const fallback=panel({supported:false});await fallback.send('Open the existing coding chat');assert.equal(fallback.messages[0]._meta['openai/message'].target,'active');
 const setup=panel();await setup.connect();assert.equal(setup.calls.length,1);assert.equal(setup.calls[0].name,'open_clickup_settings');assert.equal(Object.keys(setup.calls[0].arguments).length,0);assert.equal(setup.links[0].url,'http://127.0.0.1:12345/setup/abcdef');assert.equal(setup.error(),'');
 const badSetup=panel({setupUrl:'https://example.com/setup/abcdef'});await badSetup.connect();assert.equal(badSetup.links.length,0);assert.equal(badSetup.error(),'Invalid setup URL.');
 const failedSetup=panel({failure:true});await failedSetup.connect();assert.equal(failedSetup.links.length,0);assert.equal(failedSetup.error(),'Creation unavailable');
-console.log('PASS: single/batch buttons invoke direct implementation tool, never send a dispatcher message; settings preserved; failures/partial failures never fall back or retry; existing-chat navigation unchanged.');
+console.log('PASS: single/batch buttons invoke direct implementation tool, never send a dispatcher message; settings preserved; failures/partial failures never fall back or retry; native chat navigation.');
 
 // Exercise real menu/detail rendering and action handlers with a small DOM stand-in.
 // Dynamic IDs only exist if the renderer put them in the HTML.
 const elements=new Map(),uiCalls=[];
 function element(id){
- let html='';const node={id,style:{},classList:{add(){},remove(){}},focus(){},getBoundingClientRect:()=>({left:0,bottom:0}),offsetWidth:290,offsetHeight:400};
+ let html='';const node={id,style:{},classList:{add(){},remove(){},contains(){return false;}},contains(){return false;},focus(){},getBoundingClientRect:()=>({left:0,bottom:0}),offsetWidth:290,offsetHeight:400};
  Object.defineProperty(node,'innerHTML',{get:()=>html,set:value=>{html=value;for(const match of value.matchAll(/<[^>]+\bid="([^"]+)"[^>]*>/g)){const child=elements.get(match[1])||element(match[1]);child.disabled=/\sdisabled(?:\s|>)/.test(match[0]);}}});
  elements.set(id,node);return node;
 }
@@ -75,3 +73,7 @@ menuContext.ui.renderDetail();assert.match(elements.get('detail').innerHTML,/id=
 menuContext.ui.openMenu('ticket-a',{left:0,bottom:0});assert.equal(elements.get('cancelTicket').disabled,false);
 menuContext.ui.finish();menuContext.ui.openMenu('ticket-a',{left:0,bottom:0});assert.doesNotMatch(elements.get('utility').innerHTML,/id="cancelTicket"/);
 console.log('PASS: investigation button routing, cancellation menu rendering/action, active-assignment guards and implementation after investigation.');
+
+menuContext.ui.setRun({status:"in_progress",work_kind:"implementation",thread_id:"worker"});
+menuContext.ui.renderDetail();await elements.get("chat").onclick();assert.equal(uiCalls.at(-1).name,"open_bug_chat");assert.equal(uiCalls.at(-1).arguments.ticket_id,"ticket-a");
+assert.doesNotMatch(source,/sendMessage|extensions\.message/);

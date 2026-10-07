@@ -1,18 +1,19 @@
 import { SCOPE } from './config.mjs';
 import {taskScope} from './scope.mjs';
-export class ClickUpError extends Error { constructor(message, kind='upstream', retryAfter=0) { super(message); this.kind=kind; this.retryAfter=retryAfter; } }
+export class ClickUpError extends Error { constructor(message, kind='upstream', retryAfter=0, definiteRejection=false) { super(message); this.kind=kind; this.retryAfter=retryAfter; this.definiteRejection=definiteRejection; } }
 export class ClickUpClient {
-  constructor(token, fetcher=fetch, scope=SCOPE) { this.token=token; this.fetcher=fetcher;this.scope={...scope};this.dynamic=scope!==SCOPE; }
+  constructor(token, fetcher=fetch, scope=SCOPE, {deadline=Date.now()+90000}={}) { this.token=token; this.fetcher=fetcher;this.scope={...scope};this.dynamic=scope!==SCOPE;this.deadline=deadline; }
   async get(path, params={}) { return this.request(path, params); }
   async request(path, params={}, method='GET', body) {
     const url=new URL('https://api.clickup.com/api/v2/'+path);
     for(const [key,value] of Object.entries(params)) { if(Array.isArray(value)) value.forEach(v=>url.searchParams.append(key+'[]',v)); else url.searchParams.set(key,String(value)); }
-    let response;
-    try { response=await this.fetcher(url,{method,body:body===undefined?undefined:JSON.stringify(body),headers:{Authorization:this.token,Accept:'application/json','Content-Type':'application/json'},redirect:'error',signal:AbortSignal.timeout(20000)}); }
+    let response;const remaining=this.deadline-Date.now();
+    if(remaining<=0)throw new ClickUpError('The ClickUp operation took too long. Try a smaller selection or retry later.','timeout',0,true);
+    try { response=await this.fetcher(url,{method,body:body===undefined?undefined:JSON.stringify(body),headers:{Authorization:this.token,Accept:'application/json','Content-Type':'application/json'},redirect:'error',signal:AbortSignal.timeout(Math.min(20000,remaining))}); }
     catch { throw new ClickUpError('Could not reach ClickUp. Your previous ticket list has been kept.'); }
-    if(response.status===401||response.status===403) throw new ClickUpError('ClickUp access was denied. Reconnect with a token that can access the selected ClickUp lists.','authentication');
-    if(response.status===429) {const reset=Number(response.headers.get('x-ratelimit-reset'));const seconds=Number(response.headers.get('retry-after'));const retry=seconds>0?seconds*1000:reset>0?Math.max(1000,reset*1000-Date.now()):60000;throw new ClickUpError('ClickUp rate limit reached. Please wait before refreshing again.','rate_limit',Math.min(Math.max(retry,1000),3600000));}
-    if(!response.ok) throw new ClickUpError(`ClickUp returned HTTP ${response.status}. Your previous ticket list has been kept.`);
+    if(response.status===401||response.status===403) throw new ClickUpError('ClickUp access was denied. Reconnect with a token that can access the selected ClickUp lists.','authentication',0,true);
+    if(response.status===429) {const reset=Number(response.headers.get('x-ratelimit-reset'));const seconds=Number(response.headers.get('retry-after'));const retry=seconds>0?seconds*1000:reset>0?Math.max(1000,reset*1000-Date.now()):60000;throw new ClickUpError('ClickUp rate limit reached. Please wait before trying again.','rate_limit',Math.min(Math.max(retry,1000),3600000),true);}
+    if(!response.ok) throw new ClickUpError(`ClickUp returned HTTP ${response.status}. Try again after checking the connection.`,'upstream',0,[400,404,405,413,415,422].includes(response.status));
     try { const body=await response.text(); if(body.length>10000000) throw new Error(); return JSON.parse(body); } catch { throw new ClickUpError('ClickUp returned an invalid response.'); }
   }
   async verifyScope() {
@@ -40,7 +41,7 @@ export class ClickUpClient {
       if(all.size>10000)throw new ClickUpError('Too many comments to load safely.');
     }throw new ClickUpError('Comment history exceeded the page limit.');
   }
-  async postAcceptance(id,text){await this.verifyTicket(id);const result=await this.request('task/'+id+'/comment',{},'POST',{comment_text:text,notify_all:false});if(!result.id)throw new ClickUpError('Comment publication was not confirmed.');return String(result.id);}
+  async postAcceptance(id,text){try{await this.verifyTicket(id);}catch(e){e.definiteRejection=true;throw e;}const result=await this.request('task/'+id+'/comment',{},'POST',{comment_text:text,notify_all:false});if(!result.id)throw new ClickUpError('Comment publication was not confirmed.');return String(result.id);}
   async cancelBug(id,expectedStatus){
     const task=await this.verifyTicket(id),list=await this.verifyScope();
     const targets=list.statuses.filter(s=>s.status.trim().toLowerCase()==='cancelled');
